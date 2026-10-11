@@ -140,7 +140,7 @@ lenny-growth-assistant/
 
 ```bash
 
-git clone <YOUR\_PUBLIC\_GITHUB\_REPOSITORY\_URL>
+git clone https://github.com/Hamitha19/lenny-growth-assistant.git
 
 cd lenny-growth-assistant
 
@@ -170,8 +170,8 @@ venv\\Scripts\\activate
 
 
 
-Install the project's Python dependencies using its dependency file, if provided.
-
+Install the project's Python dependencies by running:
+pip install -r requirements.txt
 
 
 \### 4. Configure environment variables
@@ -332,7 +332,13 @@ The endpoint accepts an optional session identifier for continuing an existing c
 
 
 
-Automated tests and manual UI test instructions will be added under `tests/`.
+Automated endpoint tests are available in `tests/test_health.py`. Manual UI test instructions are documented in `docs/TEST_PLAN.md`.
+
+Run the automated tests with:
+
+```cmd
+python -m pytest tests\test_health.py -v
+```
 
 
 
