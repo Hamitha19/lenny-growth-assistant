@@ -22,3 +22,10 @@ data/vector_db_backup/
 # Downloaded transcript dataset and processed data
 data/transcripts/
 data/processed/
+
+# Local backup files
+backend/main_backup.py
+backend/main_before_pi.py
+backend/main_before_writing.py
+backend/main_pre_db.py
+backend/main_rag_backup.py

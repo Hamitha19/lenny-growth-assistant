@@ -145,6 +145,21 @@
             <textarea id="question" placeholder="Ask a question..." required></textarea>
             <button id="send" type="submit">Send</button>
         </form>
+        
+<section id="writing-section" style="margin-top: 28px; background: white; padding: 20px; border: 1px solid    #e1e5ee; border-radius: 12px;">
+    <h2>Ship 30 for 30 Essay Writer</h2>
+    <p>Generate an essay using relevant Lenny podcast and newsletter passages.</p>
+
+    <form id="writing-form">
+        <textarea id="writing-topic" placeholder="Enter your essay topic..." required></textarea>
+        <button id="write-button" type="submit">Generate Essay</button>
+    </form>
+
+    <p id="writing-status" role="status"></p>
+
+    <div id="essay-result" style="white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7;"></div>
+    <div id="essay-sources" class="sources"></div>
+</section>
 
         <button id="new-chat" type="button">Start new conversation</button>
     </main>
@@ -260,7 +275,63 @@
                 question.focus();
             }
         });
+        
+const writingForm = document.getElementById("writing-form");
+const writingTopic = document.getElementById("writing-topic");
+const writeButton = document.getElementById("write-button");
+const writingStatus = document.getElementById("writing-status");
+const essayResult = document.getElementById("essay-result");
+const essaySources = document.getElementById("essay-sources");
 
+writingForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const topic = writingTopic.value.trim();
+    if (!topic) return;
+
+    writeButton.disabled = true;
+    writingStatus.textContent = "Generating essay. This may take several minutes...";
+    essayResult.textContent = "";
+    essaySources.replaceChildren();
+
+    try {
+        const response = await fetch("http://127.0.0.1:8000/write", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Essay generation failed.");
+        }
+
+        essayResult.textContent = data.essay || "No essay was returned.";
+
+        if (data.sources && data.sources.length > 0) {
+            const heading = document.createElement("strong");
+            heading.textContent = "Transcript sources";
+            essaySources.appendChild(heading);
+
+            const list = document.createElement("ul");
+
+            data.sources.forEach(source => {
+                const item = document.createElement("li");
+                item.textContent = source.source + " (chunk " + source.chunk + ")";
+                list.appendChild(item);
+            });
+
+            essaySources.appendChild(list);
+        }
+
+        writingStatus.textContent = "Essay generated using " + (data.model || "the configured model") + ".";
+    } catch (error) {
+        writingStatus.textContent = "Error: " + error.message;
+    } finally {
+        writeButton.disabled = false;
+    }
+});
         newChatButton.addEventListener("click", () => {
             sessionId = null;
             chat.replaceChildren();
