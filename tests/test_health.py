@@ -22,3 +22,9 @@ def test_health_endpoint():
     assert data["status"] == "ok"
     assert "indexed_chunks" in data
     assert data["indexed_chunks"] >= 0
+
+
+def test_chat_requires_message():
+    response = client.post("/chat", json={})
+
+    assert response.status_code == 422
