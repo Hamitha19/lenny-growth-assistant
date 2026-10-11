@@ -1,0 +1,24 @@
+# Environment variables and secrets
+
+.env
+.env.*
+!.env.example
+
+# Python virtual environment and cache
+
+venv/
+**pycache**/
+*.py[cod]
+
+# Local vector database and generated data
+
+data/vector_db/
+data/vector_db_backup/
+
+# Logs and temporary files
+
+*.log
+.DS_Store
+# Downloaded transcript dataset and processed data
+data/transcripts/
+data/processed/
