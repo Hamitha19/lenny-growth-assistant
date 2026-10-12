@@ -45,6 +45,10 @@
 | TC-08 | Refresh or restart the backend and inspect stored chat records | Previously saved records remain available in the database                    |
 
 | TC-09 | Open the frontend in a browser                                 | Chat interface loads and accepts user input                                  |
+| TC-10 | Generate a Markdown artifact                                   | Artifact text appears in the viewer without being inserted as HTML           |
+| TC-11 | Generate an HTML/CSS artifact                                  | Preview appears in the iframe; scripts do not run in the parent page         |
+| TC-12 | Select OpenAI without an API key                               | API returns a clear configuration error; no fallback is implied              |
+| TC-13 | Inspect `/health`                                               | Selected provider and model are shown; credentials are not returned          |
 
 
 
@@ -58,13 +62,13 @@ Run:
 
 ```cmd
 
-python -m pytest tests\\test\_health.py -v
+python -m pytest -v
 
 ```
 
 
 
-The home and health endpoint tests passed during development.
+Automated model calls are mocked; these tests do not require Ollama generation or paid cloud credentials. Run the manual UI cases against a running backend and browser before recording a demo.
 
 
 

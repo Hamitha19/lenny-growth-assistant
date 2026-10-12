@@ -22,13 +22,13 @@ The main components are:
 
 
 
-1\. \*\*Frontend:\*\* HTML, CSS, and JavaScript provide the user interface for chat and essay generation.
+1\. \*\*Frontend:\*\* HTML, CSS, and JavaScript provide chat, essay generation, and an artifact panel.
 
 2\. \*\*FastAPI backend:\*\* Validates incoming requests, coordinates retrieval and generation, manages session workflows, and returns responses.
 
 3\. \*\*Pi Coding Agent integration:\*\* The chat workflow invokes the configured Pi command-line agent, which uses the available local model.
 
-4\. \*\*Ollama:\*\* Runs the local `llama3.2:3b` generation model and `nomic-embed-text` embedding model.
+4\. \*\*Generation provider:\*\* Defaults to Pi Coding Agent with Ollama; optional OpenAI Chat Completions can generate chat responses, essays, and artifacts. Ollama remains responsible for embeddings and retrieval queries.
 
 5\. \*\*Chroma vector database:\*\* Stores embedded transcript chunks and supports similarity-based retrieval.
 
@@ -52,7 +52,7 @@ The main components are:
 
 3\. The backend prepares a prompt containing the question and retrieved context.
 
-4\. The chat agent generates a response using the configured local model.
+4\. The chat agent generates with the selected provider: Pi/Ollama by default, or OpenAI when explicitly configured.
 
 5\. The backend returns the response and associated session information.
 
@@ -70,9 +70,15 @@ The main components are:
 
 3\. It constructs a structured essay-writing prompt.
 
-4\. The backend calls Ollama's local generation API.
+4\. The backend calls the selected generation provider. Local Ollama is the default.
 
 5\. The generated essay is returned to the frontend.
+
+**Artifact workflow**
+
+1\. The artifact panel sends a prompt and either `markdown` or `html` to `POST /artifact`.
+2\. The backend generates the requested content with the selected provider.
+3\. Markdown is displayed as text. HTML/CSS is assigned to an iframe `srcdoc` with an empty `sandbox` attribute and no additional permissions.
 
 
 
@@ -126,7 +132,7 @@ The current index contains approximately 4,995 chunks prepared from 60 transcrip
 
 
 
-The application uses environment variables for configuration, including the database connection and agent settings. Local model dependencies must be installed and running before the corresponding workflows can operate.
+`MODEL_PROVIDER` accepts `ollama` (default) or `openai`. The optional cloud path uses `OPENAI_API_KEY` and `OPENAI_MODEL` with the existing `httpx` dependency; it does not require a new package. Keep credentials in the ignored `.env` file. Embedding requests still use Ollama and `EMBED_MODEL`, including in OpenAI generation mode. There is no automatic fallback. `/health` reports provider/model selection but does not test provider connectivity.
 
 
 
@@ -170,7 +176,7 @@ The application should report meaningful errors, use sensible timeouts, and log 
 
 \* Treat retrieved documents and model output as untrusted content.
 
-\* Isolate any future generated HTML preview from the main application.
+\* Generated HTML is untrusted and runs only in an iframe with `sandbox=""`; do not add iframe permissions without a security review.
 
 
 
@@ -182,7 +188,7 @@ Local inference reduces dependence on paid APIs but can be slower and may genera
 
 
 
-A cloud-provider selector and automatic fallback should be considered unimplemented unless they are present in the code and verified through testing. Similarly, a dedicated isolated Artifact Viewer should not be considered complete until implemented and tested.
+Provider selection and artifact generation are implemented. Automated tests mock generation and verify configuration and the sandbox markup; live provider connectivity and full browser behavior still require a local manual check. Automatic fallback is not implemented.
 
 
 
@@ -190,7 +196,6 @@ A cloud-provider selector and automatic fallback should be considered unimplemen
 
 
 
-\* Add and test cloud/local model-provider selection and fallback.
 
 \* Improve retrieval evaluation and source attribution.
 
@@ -198,7 +203,6 @@ A cloud-provider selector and automatic fallback should be considered unimplemen
 
 \* Add structured observability for model, retrieval, and database operations.
 
-\* Provide an isolated Artifact Viewer for generated HTML/CSS.
 
 \* Simplify fresh-clone setup and consider Docker Compose for reproducible startup.
 

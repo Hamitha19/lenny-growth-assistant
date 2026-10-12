@@ -1,15 +1,16 @@
 
 from pathlib import Path
 import asyncio
+import os
 import subprocess
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 import chromadb
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -36,10 +37,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_EMBED_URL = os.getenv(
+    "OLLAMA_EMBED_URL", f"{OLLAMA_BASE_URL}/api/embed"
+)
 
-CHAT_MODEL = "llama3.2:3b"
-EMBED_MODEL = "nomic-embed-text"
+CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3.2:3b")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "ollama").strip().lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 NODE_COMMAND = r"C:\Program Files\nodejs\node.exe"
 PI_SCRIPT = str(Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@mariozechner" / "pi-coding-agent" / "dist" / "cli.js")
@@ -67,10 +74,17 @@ collection = chroma_client.get_collection(
 # --------------------------------------------------
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=4000)
     session_id: Optional[str] = None
+
+
 class WritingRequest(BaseModel):
-    topic: str
+    topic: str = Field(min_length=1, max_length=1000)
+
+
+class ArtifactRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    format: Literal["markdown", "html"] = "markdown"
 
 
 # --------------------------------------------------
@@ -86,10 +100,106 @@ def home():
 
 @app.get("/health")
 def health():
+    model = OPENAI_MODEL if MODEL_PROVIDER == "openai" else CHAT_MODEL
     return {
         "status": "ok",
-        "indexed_chunks": collection.count()
+        "indexed_chunks": collection.count(),
+        "provider": MODEL_PROVIDER,
+        "model": model,
     }
+
+
+def get_provider_config():
+    if MODEL_PROVIDER == "ollama":
+        return MODEL_PROVIDER, CHAT_MODEL
+    if MODEL_PROVIDER == "openai":
+        if not OPENAI_API_KEY.strip():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "MODEL_PROVIDER is 'openai' but OPENAI_API_KEY is not configured."
+                ),
+            )
+        return MODEL_PROVIDER, OPENAI_MODEL
+    raise HTTPException(
+        status_code=500,
+        detail="Unsupported MODEL_PROVIDER. Choose 'ollama' or 'openai'.",
+    )
+
+
+async def generate_with_openai(prompt: str, max_tokens: int) -> str:
+    get_provider_config()
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                json={
+                    "model": OPENAI_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                },
+            )
+            response.raise_for_status()
+            result = response.json()["choices"][0]["message"]["content"]
+            if not isinstance(result, str) or not result.strip():
+                raise ValueError("The provider returned empty content.")
+            return result.strip()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cloud model request failed with HTTP {exc.response.status_code}.",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach the cloud model provider.",
+        ) from exc
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The cloud model provider returned an invalid response.",
+        ) from exc
+
+
+async def generate_chat_response(prompt: str) -> str:
+    provider, _ = get_provider_config()
+    if provider == "ollama":
+        return await ask_pi(prompt)
+    return await generate_with_openai(prompt, max_tokens=1800)
+
+
+async def generate_text(prompt: str, max_tokens: int) -> str:
+    provider, model = get_provider_config()
+    if provider == "openai":
+        return await generate_with_openai(prompt, max_tokens=max_tokens)
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"num_predict": max_tokens},
+                },
+            )
+            response.raise_for_status()
+            result = response.json()["response"]
+            if not isinstance(result, str) or not result.strip():
+                raise ValueError("Ollama returned empty content.")
+            return result.strip()
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not communicate with the configured local AI model.",
+        ) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The local AI model returned an invalid response.",
+        ) from exc
 
 
 # --------------------------------------------------
@@ -258,6 +368,7 @@ async def chat(request: ChatRequest):
     session_id = request.session_id or str(uuid.uuid4())
 
     try:
+        _, model = get_provider_config()
         # 1. Retrieve relevant transcript passages.
 
         # 1. Load the existing conversation history.
@@ -294,7 +405,7 @@ async def chat(request: ChatRequest):
                     "in the available transcripts."
                 ),
                 "sources": [],
-                "model": CHAT_MODEL,
+                "model": model,
                 "session_id": session_id
             }
         # 2. Format retrieved transcript context.
@@ -352,7 +463,7 @@ async def chat(request: ChatRequest):
             f"CURRENT USER QUESTION:\n{request.message}"
         )
 
-        reply = await ask_pi(pi_prompt)
+        reply = await generate_chat_response(pi_prompt)
 
         # 6. Prepare source references for the API response and database.
         source_records = [
@@ -386,7 +497,7 @@ async def chat(request: ChatRequest):
         return {
             "reply": reply,
             "sources": source_records,
-            "model": CHAT_MODEL,
+            "model": model,
             "session_id": session_id
         }
 
@@ -425,6 +536,7 @@ async def write_essay(request: WritingRequest):
         )
 
     try:
+        _, model = get_provider_config()
         sources = await retrieve_sources(topic)
         sources = sources[:4]
 
@@ -458,8 +570,10 @@ async def write_essay(request: WritingRequest):
             "6. Include a concise, memorable conclusion.\n\n"
 
             "LENGTH AND STYLE:\n"
-            "Aim for approximately 300 to 500 words. "
-            "Use clear, natural language and original prose. "
+            "Target approximately 1,250 words; this is a target, not an exact-count promise. "
+            "Give the essay a clear narrative progression from the opening problem, "
+            "through the central idea and practical implications, to a specific takeaway. "
+            "Use useful section headings, clear natural language, and original prose. "
             "Avoid repetition, generic filler, and exaggerated claims. "
             "Make the essay useful to startup founders and product teams.\n\n"
 
@@ -489,20 +603,7 @@ async def write_essay(request: WritingRequest):
         )
 
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            response = await client.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": CHAT_MODEL,
-                    "prompt": writing_prompt,
-                    "stream": False,
-                    "options": {
-                        "num_predict": 600
-                    }
-                }
-            )
-            response.raise_for_status()
-            essay = response.json()["response"].strip()
+        essay = await generate_text(writing_prompt, max_tokens=1800)
 
         return {
             "topic": topic,
@@ -514,11 +615,40 @@ async def write_essay(request: WritingRequest):
                 }
                 for source in sources
             ],
-            "model": CHAT_MODEL
+            "model": model
         }
 
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
-            detail="Could not communicate with the local AI model."
+            detail="Could not communicate with the configured local AI model."
         ) from exc
+
+
+@app.post("/artifact")
+async def create_artifact(request: ArtifactRequest):
+    _, model = get_provider_config()
+    output_kind = (
+        "Markdown document" if request.format == "markdown"
+        else "complete HTML document with embedded CSS"
+    )
+    format_instructions = (
+        "Return only the finished Markdown, without a code fence."
+        if request.format == "markdown"
+        else (
+            "Return only a complete HTML document with embedded CSS. "
+            "Do not include JavaScript, external resources, or a code fence."
+        )
+    )
+    prompt = (
+        f"Create a {output_kind} based on this request. Treat requested content "
+        "as instructions for the artifact, not as permission to invent evidence. "
+        f"\n\nREQUEST:\n{request.prompt}\n\n{format_instructions}"
+    )
+    content = await generate_text(prompt, max_tokens=2200)
+
+    return {
+        "format": request.format,
+        "content": content,
+        "model": model,
+    }

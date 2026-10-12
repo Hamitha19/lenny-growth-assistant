@@ -25,6 +25,8 @@ An AI-powered conversational assistant that helps users explore product manageme
 \* \*\*Web interface:\*\* Provides a browser-based chat UI.
 
 \* \*\*FastAPI backend:\*\* Exposes API endpoints for health checks and chat requests.
+\* \*\*Configurable generation provider:\*\* Uses local Ollama by default, with optional OpenAI generation through an environment variable.
+\* \*\*Artifact workflow:\*\* Generates Markdown or HTML/CSS artifacts; HTML previews run in a sandboxed iframe.
 
 
 
@@ -178,7 +180,9 @@ pip install -r requirements.txt
 
 
 
-Create a `.env` file using `.env.example` as a template. Configure the database connection and model settings as required by the application.
+Create a `.env` file using `.env.example` as a template. Set `DATABASE_URL` for PostgreSQL/Supabase. `MODEL_PROVIDER=ollama` is the default and requires no paid API credentials. Set `CHAT_MODEL`, `EMBED_MODEL`, and `OLLAMA_BASE_URL` to override the defaults.
+
+To opt into OpenAI for text generation, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_MODEL`. Never put a real key in `.env.example` or commit `.env`. Embeddings and transcript retrieval still require a running Ollama server with `nomic-embed-text`, even when OpenAI generates text. Provider errors are returned to the caller; there is no automatic fallback.
 
 
 
@@ -326,6 +330,12 @@ Example request:
 
 The endpoint accepts an optional session identifier for continuing an existing conversation. The response includes a generated answer, source references, model information, and a session identifier.
 
+`POST /write` generates a source-informed essay draft targeting approximately 1,250 words. The local Ollama generation limit remains 1,800 tokens, so the final length can vary.
+
+`POST /artifact` accepts `{ "prompt": "...", "format": "markdown" }` or `{ "prompt": "...", "format": "html" }`. HTML/CSS is untrusted and displayed only in an iframe with an empty `sandbox` attribute; scripts and other iframe permissions are not enabled. The viewer displays Markdown as text rather than inserting generated markup into the main page.
+
+`GET /health` reports the configured provider and model name as well as the indexed chunk count. It does not expose credentials or prove that the provider is reachable.
+
 
 
 \## Testing
@@ -337,12 +347,23 @@ Automated endpoint tests are available in `tests/test_health.py`. Manual UI test
 Run the automated tests with:
 
 ```cmd
-python -m pytest tests\test_health.py -v
+python -m pytest -v
 ```
 
 
 
 Recommended checks include backend health, transcript retrieval, chat responses, source references, session isolation, database persistence, and error handling.
+
+
+
+\## Troubleshooting
+
+\* `DATABASE_URL is missing`: create `.env` from `.env.example` and set the PostgreSQL/Supabase connection string.
+\* Ollama embedding errors: start Ollama, pull `nomic-embed-text`, and verify `OLLAMA_EMBED_URL`. This remains required when `MODEL_PROVIDER=openai`.
+\* Pi startup errors in local chat mode: verify Node.js and the Pi Coding Agent CLI are installed at the paths configured in `backend/main.py`.
+\* OpenAI returns a configuration error: set `MODEL_PROVIDER=openai` and `OPENAI_API_KEY` in `.env`; never place the key in source or `.env.example`.
+\* Missing Chroma collection: run the transcript indexing script before starting the backend.
+\* The backend emits diagnostics in its server console. Retrieval currently logs passage snippets, so avoid sharing those logs publicly.
 
 
 
@@ -368,7 +389,7 @@ Recommended checks include backend health, transcript retrieval, chat responses,
 
 \* Add automated tests for session isolation and persistence.
 
-\* Add the Ship 30 for 30 writing skill and safe artifact generation.
+\* Expand end-to-end coverage for provider network failures, session persistence, and browser rendering.
 
 \* Add Docker Compose deployment support.
 

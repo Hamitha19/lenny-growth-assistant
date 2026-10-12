@@ -62,7 +62,7 @@ The web interface provides:
 
 \* A session-aware interaction flow.
 
-\* A dedicated essay-writing section.
+\* A dedicated essay-writing section and an Artifact Viewer beside chat.
 
 \* A clear indication of generated content and the model used, where available.
 
@@ -88,7 +88,8 @@ The FastAPI backend exposes endpoints for the main application workflows.
 
 \* `POST /chat` — submit a conversational question with an optional session ID.
 
-\* `POST /write` — generate an essay draft, subject to the current implementation.
+\* `POST /write` — generate a source-informed essay draft.
+\* `POST /artifact` — generate Markdown or HTML/CSS for the Artifact Viewer.
 
 
 
@@ -134,7 +135,7 @@ User messages and generated responses should be treated as untrusted content. If
 
 
 
-The current essay workflow primarily produces text/Markdown. HTML artifact rendering and sanitization should be considered incomplete unless implemented and verified.
+Markdown artifacts are displayed as text; HTML/CSS previews run in an iframe with `sandbox=""`. Generated HTML is not inserted into the main page DOM. Automated tests verify the sandbox configuration, but a browser smoke test remains part of the manual test plan.
 
 
 
@@ -150,11 +151,9 @@ Controls should have understandable labels and sufficient visual contrast. The p
 
 
 
-\* Add a verified model-provider selector with documented fallback behavior.
 
 \* Improve source citations and source inspection.
 
-\* Add a dedicated, isolated Artifact Viewer for generated HTML/CSS.
 
 \* Expand automated tests for retrieval, session persistence, and API failures.
 
