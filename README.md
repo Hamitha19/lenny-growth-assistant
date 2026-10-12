@@ -403,6 +403,8 @@ Recommended checks include backend health, transcript retrieval, chat responses,
 
 Transcript dataset: \[Lenny's Newsletter Podcast Data](https://github.com/LennysNewsletter/lennys-newsletterpodcastdata)
 
-
+**📽️Project Demo Link
+**
+https://www.loom.com/share/d97d8b2a18784636a62b8703cbd8dbf6
 
 This project was developed as a conversational AI assistant for exploring product and startup growth insights.
